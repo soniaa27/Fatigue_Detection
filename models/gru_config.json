@@ -1,0 +1,29 @@
+{
+  "input_size": 17,
+  "hidden_size": 64,
+  "num_layers": 2,
+  "dropout": 0.4,
+  "window_size": 30,
+  "feature_cols": [
+    "ear_mean",
+    "ear_min",
+    "perclos",
+    "blink_count",
+    "mar_mean",
+    "mar_max",
+    "yawn_flag",
+    "pitch_mean",
+    "pitch_var",
+    "yaw_mean",
+    "roll_mean",
+    "nod_detected",
+    "head_droop",
+    "head_var",
+    "ear_mean_slope",
+    "perclos_slope",
+    "pitch_mean_slope"
+  ],
+  "decision_threshold": 0.001323140226304531,
+  "auc_roc": 0.980246913580247,
+  "best_val_loss": 0.5603239154443145
+}

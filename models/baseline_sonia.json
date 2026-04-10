@@ -1,0 +1,33 @@
+{
+  "user_id": "sonia",
+  "mean": {
+    "ear_mean": 0.298645,
+    "ear_min": 0.223062,
+    "perclos": 0.036354,
+    "blink_count": 0.348561,
+    "mar_mean": 0.087977,
+    "mar_max": 0.113717,
+    "pitch_mean": -0.989459,
+    "pitch_var": 3.856702,
+    "yaw_mean": -55.083287,
+    "roll_mean": -44.928152,
+    "head_var": 1197.348178
+  },
+  "std": {
+    "ear_mean": 0.029561,
+    "ear_min": 0.088194,
+    "perclos": 0.082479,
+    "blink_count": 0.564939,
+    "mar_mean": 0.015643,
+    "mar_max": 0.03327,
+    "pitch_mean": 5.317098,
+    "pitch_var": 11.465982,
+    "yaw_mean": 44.422101,
+    "roll_mean": 60.686433,
+    "head_var": 1232.347504
+  },
+  "n_samples": 721,
+  "valid": true,
+  "created_at": 1775828439.8861701,
+  "updated_at": 1775828439.8861701
+}

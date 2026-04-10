@@ -1,0 +1,13 @@
+venv/
+venv311/
+venv312/
+__pycache__/
+*.pyc
+.DS_Store
+
+models/*.pt
+data/
+
+*.mp4
+*.mov
+src/uploads/

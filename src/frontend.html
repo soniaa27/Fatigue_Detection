@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Driver Fatigue Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Exo+2:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:         #07090d;
+      --surface:    #0d1117;
+      --surface2:   #131923;
+      --surface3:   #1a2130;
+      --border:     rgba(255,255,255,0.07);
+      --border2:    rgba(255,255,255,0.13);
+      --text:       #eef2ff;
+      --muted:      #3d4a5c;
+      --muted2:     #6b7a90;
+      --cyan:       #00cfff;
+      --cyan-dim:   rgba(0,207,255,0.10);
+      --cyan-glow:  rgba(0,207,255,0.22);
+      --amber:      #ffb300;
+      --amber-dim:  rgba(255,179,0,0.12);
+      --red:        #ff3b3b;
+      --red-dim:    rgba(255,59,59,0.13);
+      --orange:     #ff6a00;
+      --green:      #00e676;
+      --green-dim:  rgba(0,230,118,0.10);
+      --purple:     #c653ff;
+      --font-hud:   'Orbitron', monospace;
+      --font-ui:    'Exo 2', sans-serif;
+      --font-mono:  'Share Tech Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font-ui); }
+
+    /* subtle dot grid */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── TOPBAR ─────────────────────────────────────────── */
+    .topbar {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px; padding: 0 18px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border2);
+      flex-shrink: 0; gap: 12px;
+    }
+
+    .brand { display: flex; align-items: baseline; gap: 10px; }
+    .brand-name {
+      font-family: var(--font-hud); font-size: 14px; font-weight: 900;
+      color: var(--cyan); letter-spacing: 0.14em;
+      text-shadow: 0 0 14px var(--cyan-glow);
+    }
+    .brand-sub {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--muted2); letter-spacing: 0.14em;
+    }
+
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 13px; border-radius: 3px;
+      border: 1px solid var(--border2); background: var(--surface2);
+      font-family: var(--font-mono); font-size: 11px; color: var(--muted2);
+      flex-shrink: 0;
+    }
+    .status-pill.live   { color: var(--green);  border-color: rgba(0,230,118,0.35); background: var(--green-dim); }
+    .status-pill.danger { color: var(--red);    border-color: rgba(255,59,59,0.4);  background: var(--red-dim); }
+    .pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .live .pill-dot   { animation: blink 1.6s infinite; }
+    .danger .pill-dot { animation: blink 0.5s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.1} }
+
+    .source-pill {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 13px; border-radius: 3px;
+      border: 1px solid var(--border2); background: var(--surface2);
+      font-family: var(--font-mono); font-size: 11px; color: var(--muted2);
+      max-width: 280px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .source-pill.ready { color: var(--cyan); border-color: rgba(0,207,255,0.35); background: var(--cyan-dim); }
+
+    .btn {
+      font-family: var(--font-hud); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      padding: 9px 18px; border-radius: 3px; border: 1px solid transparent;
+      cursor: pointer; transition: all 0.13s;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.22; cursor: not-allowed; }
+
+    .btn-start   { background: var(--cyan); color: #000; border-color: var(--cyan); }
+    .btn-stop    { background: transparent; color: var(--red); border-color: rgba(255,59,59,0.45); }
+    .btn-stop:hover:not(:disabled) { background: var(--red-dim); }
+    .btn-refresh { background: transparent; color: var(--muted2); border-color: var(--border2); }
+    .btn-refresh:hover:not(:disabled) { color: var(--text); }
+
+    /* ── LAYOUT ─────────────────────────────────────────── */
+    .main {
+      position: relative; z-index: 1;
+      display: flex; flex: 1;
+      height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+
+    /* ── LEFT PANEL ─────────────────────────────────────── */
+    .left {
+      width: 320px; min-width: 280px; max-width: 340px;
+      display: flex; flex-direction: column;
+      background: var(--surface);
+      border-right: 1px solid var(--border2);
+      overflow-y: auto; overflow-x: hidden;
+      scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+    }
+
+    /* ALERT BANNER */
+    .alert-banner {
+      display: none; flex-direction: column; align-items: center;
+      gap: 6px; text-align: center;
+      padding: 18px 16px;
+      background: var(--red-dim);
+      border-bottom: 1px solid rgba(255,59,59,0.3);
+    }
+    .alert-banner.show { display: flex; }
+    .alert-bang {
+      font-family: var(--font-hud); font-size: 40px; font-weight: 900;
+      color: var(--red); line-height: 1; animation: blink 0.55s infinite;
+    }
+    .alert-title {
+      font-family: var(--font-hud); font-size: 13px; font-weight: 700;
+      color: var(--red); letter-spacing: 0.1em;
+    }
+    .alert-sub { font-size: 12px; color: #b07070; line-height: 1.4; }
+
+    /* SECTION */
+    .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .sec-title {
+      font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+      letter-spacing: 0.22em; text-transform: uppercase; margin-bottom: 12px;
+    }
+
+    /* METRIC ITEM */
+    .metric { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+    .metric:last-child { margin-bottom: 0; }
+    .metric-row { display: flex; align-items: baseline; justify-content: space-between; }
+
+    .metric-label {
+      font-size: 11px; font-weight: 600; color: var(--muted2);
+      text-transform: uppercase; letter-spacing: 0.07em;
+    }
+
+    .metric-tag {
+      font-family: var(--font-mono); font-size: 10px;
+      padding: 2px 8px; border-radius: 2px; letter-spacing: 0.05em;
+    }
+    .tag-ok     { background: var(--green-dim); color: var(--green); }
+    .tag-warn   { background: var(--amber-dim); color: var(--amber); }
+    .tag-danger { background: var(--red-dim);   color: var(--red);   }
+
+    .metric-val {
+      font-family: var(--font-hud); font-size: 34px; font-weight: 700;
+      line-height: 1; color: var(--text); letter-spacing: -0.01em;
+    }
+    .metric-unit {
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted2);
+      margin-left: 5px;
+    }
+
+    .mbar-track {
+      height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;
+    }
+    .mbar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 0.55s cubic-bezier(0.4,0,0.2,1);
+      min-width: 3px;
+    }
+
+    /* SESSION */
+    .session-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .sess-cell { background: var(--surface2); border-radius: 3px; padding: 9px 12px; }
+    .sess-lbl {
+      font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+      letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 3px;
+    }
+    .sess-val { font-family: var(--font-mono); font-size: 13px; color: var(--text); }
+
+    /* LOG */
+    .log-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 16px; cursor: pointer; user-select: none;
+    }
+    .log-toggle:hover { background: rgba(255,255,255,0.02); }
+    .log-toggle-lbl {
+      font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+      letter-spacing: 0.22em; text-transform: uppercase;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .log-ct {
+      background: var(--surface2); color: var(--muted2);
+      border-radius: 2px; padding: 1px 7px; font-size: 9px;
+    }
+    .log-arrow { font-size: 9px; color: var(--muted); transition: transform 0.2s; }
+    .log-arrow.open { transform: rotate(180deg); }
+
+    .log-body {
+      display: none; padding: 0 16px 14px;
+      max-height: 200px; overflow-y: auto;
+      font-family: var(--font-mono); font-size: 11px; line-height: 1.7;
+    }
+    .log-body.show { display: block; }
+    .ll       { color: var(--muted2); }
+    .ll.sys   { color: rgba(255,255,255,0.17); }
+    .ll.warn  { color: var(--amber); }
+    .ll.err   { color: var(--red); }
+    .ll.ok    { color: var(--green); }
+
+    /* ── RIGHT PANEL ────────────────────────────────────── */
+    .right {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    /* CAMERA */
+    .cam-wrap {
+      flex: 1; position: relative; background: #000; overflow: hidden;
+    }
+
+    .cam-feed {
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+    }
+
+    /* HUD corners */
+    .corner {
+      position: absolute; width: 22px; height: 22px;
+      border-color: var(--cyan); border-style: solid; opacity: 0.45;
+    }
+    .c-tl { top:12px; left:12px;  border-width: 2px 0 0 2px; }
+    .c-tr { top:12px; right:12px; border-width: 2px 2px 0 0; }
+    .c-bl { bottom:12px; left:12px;  border-width: 0 0 2px 2px; }
+    .c-br { bottom:12px; right:12px; border-width: 0 2px 2px 0; }
+
+    .cam-status-tag {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--cyan); letter-spacing: 0.18em; opacity: 0.55;
+    }
+
+    /* overlay buffer progress on camera */
+    .cam-buffer {
+      position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .cam-buf-label {
+      font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.35);
+      letter-spacing: 0.12em;
+    }
+    .cam-buf-track {
+      width: 160px; height: 4px;
+      background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
+    }
+    .cam-buf-fill {
+      height: 100%; border-radius: 2px; background: var(--cyan); opacity: 0.6;
+      transition: width 0.5s;
+    }
+
+    /* ── FATIGUE GRAPH ──────────────────────────────────── */
+    .fatigue-section {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border2);
+      padding: 13px 20px 15px;
+    }
+
+    .fat-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 9px;
+    }
+
+    .fat-title {
+      font-family: var(--font-hud); font-size: 10px; font-weight: 700;
+      color: var(--muted2); letter-spacing: 0.16em; text-transform: uppercase;
+    }
+
+    .fat-score-wrap { display: flex; align-items: baseline; gap: 5px; }
+    .fat-score {
+      font-family: var(--font-hud); font-size: 30px; font-weight: 900;
+      color: var(--text); line-height: 1; transition: color 0.4s;
+    }
+    .fat-denom { font-family: var(--font-mono); font-size: 12px; color: var(--muted2); }
+
+    .fat-graph {
+      height: 86px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(to top, rgba(255,59,59,0.06) 0 33%, rgba(255,179,0,0.06) 33% 66%, rgba(0,230,118,0.06) 66% 100%),
+        rgba(255,255,255,0.03);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .fat-graph svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .fat-grid {
+      stroke: rgba(255,255,255,0.12);
+      stroke-width: 1;
+      shape-rendering: crispEdges;
+    }
+
+    .fat-line {
+      fill: none;
+      stroke: var(--cyan);
+      stroke-width: 2.2;
+      filter: drop-shadow(0 0 3px rgba(0,207,255,0.35));
+      transition: stroke 0.2s;
+    }
+
+    .fat-zones {
+      display: flex; justify-content: space-between; margin-top: 5px;
+    }
+    .fat-zone { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .zone-safe   { color: var(--green); }
+    .zone-warn   { color: var(--amber); }
+    .zone-danger { color: var(--red);   }
+
+    /* ── STOPPED OVERLAY on camera ───────────────────────── */
+    .cam-offline {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; background: var(--bg);
+    }
+    .cam-offline-icon {
+      width: 60px; height: 60px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .cam-offline-icon svg { opacity: 0.18; }
+    .cam-offline-txt {
+      font-family: var(--font-mono); font-size: 12px;
+      color: var(--muted); letter-spacing: 0.12em;
+    }
+
+    @media (max-width: 700px) {
+      html,body { overflow: auto; }
+      .main { flex-direction: column; height: auto; }
+      .left { width: 100%; max-width: 100%; min-width: unset; border-right: none; border-bottom: 1px solid var(--border2); }
+      .cam-wrap { min-height: 240px; }
+      .metric-val { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-name">DRIVESTATUS</span>
+    <span class="brand-sub">Fatigue Monitor</span>
+  </div>
+  <div class="topbar-right">
+    <div class="status-pill" id="statusPill">
+      <div class="pill-dot"></div>
+      <span id="statusLabel">OFFLINE</span>
+    </div>
+    <div class="source-pill" id="sourcePill">No video loaded</div>
+    <button class="btn btn-refresh" id="uploadBtn">Upload Video</button>
+    <input type="file" id="videoInput" accept="video/*" hidden>
+    <button class="btn btn-start"   id="startBtn">Analyze</button>
+    <button class="btn btn-stop"    id="stopBtn"  disabled>Stop</button>
+    <button class="btn btn-refresh" id="refreshBtn">Refresh</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- LEFT PANEL -->
+  <div class="left">
+
+    <!-- FATIGUE ALERT -->
+    <div class="alert-banner" id="alertBanner">
+      <div class="alert-bang">!</div>
+      <div class="alert-title">FATIGUE ALERT</div>
+      <div class="alert-sub">Pull over safely. Driver fatigue detected.</div>
+    </div>
+
+    <!-- EAR / PERCLOS -->
+    <div class="section">
+      <div class="sec-title">Eyes</div>
+
+      <div class="metric">
+        <div class="metric-row">
+          <span class="metric-label">Eye Openness</span>
+          <span class="metric-tag tag-ok" id="earTag">NORMAL</span>
+        </div>
+        <div>
+          <span class="metric-val" id="earVal">—</span>
+          <span class="metric-unit">EAR</span>
+        </div>
+        <div class="mbar-track">
+          <div class="mbar-fill" id="earBar" style="width:0%;background:var(--cyan)"></div>
+        </div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-row">
+          <span class="metric-label">Eyes Closed %</span>
+          <span class="metric-tag tag-ok" id="perclosTag">NORMAL</span>
+        </div>
+        <div>
+          <span class="metric-val" id="perclosVal">—</span>
+          <span class="metric-unit">PERCLOS</span>
+        </div>
+        <div class="mbar-track">
+          <div class="mbar-fill" id="perclosBar" style="width:0%;background:var(--amber)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRU / DEV -->
+    <div class="section">
+      <div class="sec-title">Detection Scores</div>
+
+      <div class="metric">
+        <div class="metric-row">
+          <span class="metric-label">Model Confidence</span>
+          <span class="metric-tag tag-ok" id="gruTag">ALERT</span>
+        </div>
+        <div>
+          <span class="metric-val" id="gruVal">—</span>
+          <span class="metric-unit">GRU</span>
+        </div>
+        <div class="mbar-track">
+          <div class="mbar-fill" id="gruBar" style="width:0%;background:var(--orange)"></div>
+        </div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-row">
+          <span class="metric-label">Baseline Drift</span>
+          <span class="metric-tag tag-ok" id="devTag">NORMAL</span>
+        </div>
+        <div>
+          <span class="metric-val" id="devVal">—</span>
+          <span class="metric-unit">DEV</span>
+        </div>
+        <div class="mbar-track">
+          <div class="mbar-fill" id="devBar" style="width:0%;background:var(--purple)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESSION -->
+    <div class="section" id="sessionSec" style="display:none">
+      <div class="sec-title">Session</div>
+      <div class="session-grid">
+        <div class="sess-cell">
+          <div class="sess-lbl">PID</div>
+          <div class="sess-val" id="pid">—</div>
+        </div>
+        <div class="sess-cell">
+          <div class="sess-lbl">Started</div>
+          <div class="sess-val" id="startedAt">—</div>
+        </div>
+        <div class="sess-cell" style="grid-column:span 2">
+          <div class="sess-lbl">Uptime</div>
+          <div class="sess-val" id="uptime">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOG -->
+    <div>
+      <div class="log-toggle" id="logToggle">
+        <span class="log-toggle-lbl">System log <span class="log-ct" id="logCt">0</span></span>
+        <span class="log-arrow" id="logArrow">▼</span>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="ll sys">Waiting for system start...</div>
+      </div>
+    </div>
+
+  </div><!-- /left -->
+
+  <!-- RIGHT PANEL -->
+  <div class="right">
+
+    <!-- CAMERA -->
+    <div class="cam-wrap" id="camWrap">
+      <!-- Always-present MJPEG img; src set to /video_feed when running -->
+      <img class="cam-feed" id="camFeed" src="" alt="camera" style="display:none">
+
+      <!-- Offline overlay, shown when stopped -->
+      <div class="cam-offline" id="camOffline">
+        <div class="cam-offline-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+               stroke="white" stroke-width="1.5" stroke-linecap="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </div>
+        <span class="cam-offline-txt">CAMERA OFFLINE — PRESS START</span>
+      </div>
+
+      <!-- HUD corners (always visible when running) -->
+      <div class="corner c-tl" id="hc1"></div>
+      <div class="corner c-tr" id="hc2"></div>
+      <div class="corner c-bl" id="hc3"></div>
+      <div class="corner c-br" id="hc4"></div>
+
+      <div class="cam-status-tag" id="camTag"></div>
+
+      <!-- Buffer progress on camera -->
+      <div class="cam-buffer" id="camBuf" style="display:none">
+        <div class="cam-buf-label" id="camBufLabel">WARMING UP</div>
+        <div class="cam-buf-track">
+          <div class="cam-buf-fill" id="camBufFill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FATIGUE GRAPH -->
+    <div class="fatigue-section">
+      <div class="fat-header">
+        <span class="fat-title">Fatigue Level</span>
+        <div class="fat-score-wrap">
+          <span class="fat-score" id="fatScore">—</span>
+          <span class="fat-denom">/ 100</span>
+        </div>
+      </div>
+      <div class="fat-graph">
+        <svg id="fatGraph" viewBox="0 0 600 100" preserveAspectRatio="none" aria-label="Fatigue trend graph">
+          <line class="fat-grid" x1="0" y1="33" x2="600" y2="33"></line>
+          <line class="fat-grid" x1="0" y1="66" x2="600" y2="66"></line>
+          <polyline class="fat-line" id="fatLine" points=""></polyline>
+        </svg>
+      </div>
+      <div class="fat-zones">
+        <span class="fat-zone zone-safe">ALERT</span>
+        <span class="fat-zone zone-warn">CAUTION</span>
+        <span class="fat-zone zone-danger">DANGER</span>
+      </div>
+    </div>
+
+  </div><!-- /right -->
+</div><!-- /main -->
+
+<script>
+  const $ = id => document.getElementById(id);
+  let isRunning = false, startedAt = null, uptimeTmr = null, logOpen = false;
+  let fatigueSeries = [];
+
+  /* ── helpers ── */
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+  function fmtUptime(iso) {
+    if (!iso) return '—';
+    const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    return h>0 ? `${h}h ${m}m ${sec}s` : m>0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+
+  /* ── metric helper ── */
+  function applyMetric(valId, barId, tagId, value, {fmt, pct, classify, labels}) {
+    if (value === null || value === undefined) return;
+    $(valId).textContent = fmt(value);
+    $(barId).style.width = Math.min(100, Math.round(pct(value))) + '%';
+    const lvl = classify(value);
+    const tag = $(tagId);
+    tag.className = 'metric-tag tag-' + lvl;
+    tag.textContent = labels[lvl];
+  }
+
+  /* ── fatigue score (0–100) from parsed metrics ── */
+  function calcFatigue(m) {
+    let score = 0, n = 0;
+    // EAR: 0.30 = alert, 0.15 = very drowsy
+    if (m.ear !== undefined) { score += Math.max(0, Math.min(100, (0.30 - m.ear) / 0.15 * 100)); n++; }
+    // PERCLOS: 0 = alert, 0.3+ = very drowsy
+    if (m.perclos !== undefined) { score += Math.max(0, Math.min(100, m.perclos / 0.30 * 100)); n++; }
+    // GRU: direct 0–1 probability
+    if (m.gru_prob !== undefined) { score += Math.max(0, Math.min(100, m.gru_prob * 100)); n++; }
+    // DEV: deviation score 0–1
+    if (m.deviation !== undefined) { score += Math.max(0, Math.min(100, m.deviation * 100)); n++; }
+    return n > 0 ? Math.round(score / n) : 0;
+  }
+
+  function renderFatigue(score, show) {
+    const el = $('fatScore');
+    const line = $('fatLine');
+
+    if (!show) {
+      fatigueSeries = [];
+      el.textContent = '—';
+      line.setAttribute('points', '');
+      return;
+    }
+
+    fatigueSeries.push(Math.max(0, Math.min(100, score)));
+    if (fatigueSeries.length > 90) fatigueSeries.shift();
+
+    const w = 600;
+    const h = 100;
+    const denom = Math.max(fatigueSeries.length - 1, 1);
+    const points = fatigueSeries
+      .map((v, i) => {
+        const x = (i / denom) * w;
+        const y = h - (v / 100) * h;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(' ');
+
+    line.setAttribute('points', points);
+    el.textContent = score;
+    const colour = score < 33 ? 'var(--green)' : score < 66 ? 'var(--amber)' : 'var(--red)';
+    line.style.stroke = colour;
+    el.style.color = colour;
+  }
+
+  function renderMetrics(m) {
+    applyMetric('earVal','earBar','earTag', m.ear, {
+      fmt: v => v.toFixed(2),
+      pct: v => v / 0.35 * 100,
+      classify: v => v < 0.18 ? 'danger' : v < 0.22 ? 'warn' : 'ok',
+      labels: {ok:'NORMAL', warn:'TIRED', danger:'CLOSING'}
+    });
+
+    applyMetric('perclosVal','perclosBar','perclosTag', m.perclos, {
+      fmt: v => (v * 100).toFixed(0) + '%',
+      pct: v => v / 0.30 * 100,
+      classify: v => v > 0.15 ? 'danger' : v > 0.07 ? 'warn' : 'ok',
+      labels: {ok:'NORMAL', warn:'ELEVATED', danger:'HIGH'}
+    });
+
+    applyMetric('gruVal','gruBar','gruTag', m.gru_prob, {
+      fmt: v => v.toFixed(2),
+      pct: v => v * 100,
+      classify: v => v > 0.65 ? 'danger' : v > 0.40 ? 'warn' : 'ok',
+      labels: {ok:'ALERT', warn:'CAUTION', danger:'FATIGUED'}
+    });
+
+    applyMetric('devVal','devBar','devTag', m.deviation, {
+      fmt: v => v.toFixed(2),
+      pct: v => v * 100,
+      classify: v => v > 0.65 ? 'danger' : v > 0.40 ? 'warn' : 'ok',
+      labels: {ok:'NORMAL', warn:'DRIFTING', danger:'HIGH'}
+    });
+
+    // buffer / warm-up bar on camera
+    const bufSec = $('camBuf');
+    if (m.sustained !== undefined && m.sustained_max !== undefined) {
+      bufSec.style.display = 'flex';
+      const pct = Math.min(100, Math.round(m.sustained / m.sustained_max * 100));
+      $('camBufFill').style.width = pct + '%';
+      $('camBufLabel').textContent = m.sustained >= m.sustained_max ? 'MONITORING' : `WARMING UP ${pct}%`;
+    } else if (m.gru_prob !== undefined) {
+      // once we have GRU data, model is warm
+      bufSec.style.display = 'flex';
+      $('camBufFill').style.width = '100%';
+      $('camBufLabel').textContent = 'MONITORING';
+    }
+
+    // alert banner — ONLY set by explicit alert_active flag from backend
+    // which is only true when alert.py fires "⚠  FATIGUE ALERT"
+    const alertOn = m.alert_active === true;
+    $('alertBanner').classList.toggle('show', alertOn);
+
+    renderFatigue(calcFatigue(m), true);
+  }
+
+  function clearMetrics() {
+    $('earVal').textContent = '—';
+    $('perclosVal').textContent = '—';
+    $('gruVal').textContent = '—';
+    $('devVal').textContent = '—';
+    $('earBar').style.width = '0%';
+    $('perclosBar').style.width = '0%';
+    $('gruBar').style.width = '0%';
+    $('devBar').style.width = '0%';
+    $('earTag').className = 'metric-tag tag-ok'; $('earTag').textContent = 'NORMAL';
+    $('perclosTag').className = 'metric-tag tag-ok'; $('perclosTag').textContent = 'NORMAL';
+    $('gruTag').className = 'metric-tag tag-ok'; $('gruTag').textContent = 'ALERT';
+    $('devTag').className = 'metric-tag tag-ok'; $('devTag').textContent = 'NORMAL';
+    renderFatigue(0, false);
+  }
+
+  function classifyLine(line) {
+    const l = line.toLowerCase();
+    if (l.includes('[web]'))               return 'sys';
+    if (l.includes('error')||l.includes('fail')) return 'err';
+    // Only mark as warn if it's the real alert line
+    if (l.includes('fatigue alert') && l.includes('⚠')) return 'warn';
+    if (l.includes('warn'))                return 'warn';
+    if (l.includes('[system]')||l.includes('ready')||l.includes('loaded')) return 'ok';
+    return '';
+  }
+
+  function renderLog(lines) {
+    $('logCt').textContent = lines.length;
+    $('logBody').innerHTML = lines.length
+      ? lines.map(l => `<div class="ll ${classifyLine(l)}">${l}</div>`).join('')
+      : '<div class="ll sys">No output yet.</div>';
+    if (logOpen) $('logBody').scrollTop = $('logBody').scrollHeight;
+  }
+
+  function renderCamera(running) {
+    const feed    = $('camFeed');
+    const offline = $('camOffline');
+    const corners = ['hc1','hc2','hc3','hc4'].map($);
+
+    if (running) {
+      // Only set src once to avoid reloading the stream
+      if (!feed.src.includes('/video_feed')) feed.src = '/video_feed';
+      feed.style.display   = 'block';
+      offline.style.display = 'none';
+      corners.forEach(c => c.style.opacity = '0.45');
+      $('camTag').textContent = 'LIVE FEED';
+    } else {
+      feed.src             = '';
+      feed.style.display   = 'none';
+      offline.style.display = 'flex';
+      corners.forEach(c => c.style.opacity = '0');
+      $('camTag').textContent = '';
+      $('camBuf').style.display = 'none';
+    }
+  }
+
+  function render(data) {
+    const s   = data.status  || {};
+    const log = data.log     || [];
+    const m   = data.metrics || {};
+    const src = data.source   || {};
+
+    isRunning = !!s.running;
+
+    // Status pill
+    const pill = $('statusPill');
+    const alertOn = m.alert_active === true;
+    if (isRunning && alertOn) {
+      pill.className = 'status-pill danger'; $('statusLabel').textContent = 'ALERT';
+    } else if (isRunning) {
+      pill.className = 'status-pill live';   $('statusLabel').textContent = 'LIVE';
+    } else {
+      pill.className = 'status-pill';        $('statusLabel').textContent = 'OFFLINE';
+    }
+
+    $('startBtn').disabled = isRunning;
+    $('stopBtn').disabled  = !isRunning;
+
+    const sourcePill = $('sourcePill');
+    if (src.name) {
+      sourcePill.classList.add('ready');
+      sourcePill.textContent = `VIDEO: ${src.name}`;
+    } else {
+      sourcePill.classList.remove('ready');
+      sourcePill.textContent = 'No video loaded';
+    }
+
+    // Session
+    const sess = $('sessionSec');
+    if (isRunning) {
+      sess.style.display = 'block';
+      $('pid').textContent       = s.pid ?? '—';
+      $('startedAt').textContent = fmtTime(s.started_at);
+      startedAt = s.started_at;
+      if (!uptimeTmr) uptimeTmr = setInterval(() => $('uptime').textContent = fmtUptime(startedAt), 1000);
+      $('uptime').textContent = fmtUptime(s.started_at);
+    } else {
+      sess.style.display = 'none';
+      clearInterval(uptimeTmr); uptimeTmr = null; startedAt = null;
+      $('alertBanner').classList.remove('show');
+      renderFatigue(0, false);
+    }
+
+    renderCamera(isRunning);
+    renderLog(log);
+    if (Object.keys(m).length > 0) renderMetrics(m);
+    else clearMetrics();
+  }
+
+  /* ── API ── */
+  async function api(path, method = 'GET') {
+    const r = await fetch(path, { method, cache: 'no-store' });
+    const data = await r.json();
+    if (!r.ok || data.ok === false) {
+      throw new Error(data.message || r.statusText || 'Request failed');
+    }
+    return data;
+  }
+
+  async function refresh() {
+    try { render(await api('/api/status')); }
+    catch (e) { $('logBody').innerHTML = `<div class="ll err">Connection error: ${e.message}</div>`; }
+  }
+
+  $('uploadBtn').addEventListener('click', () => $('videoInput').click());
+
+  $('videoInput').addEventListener('change', async () => {
+    const file = $('videoInput').files && $('videoInput').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('video', file);
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', body: form });
+      const data = await r.json();
+      if (!r.ok || data.ok === false) throw new Error(data.message || 'Upload failed');
+      await refresh();
+    } catch (e) {
+      $('logBody').innerHTML = `<div class="ll err">Upload failed: ${e.message}</div>`;
+    }
+  });
+
+  $('startBtn').addEventListener('click', async () => {
+    $('startBtn').disabled = true;
+    try { await api('/api/start', 'POST'); await refresh(); } catch (e) {
+      $('startBtn').disabled = false;
+      $('logBody').innerHTML = `<div class="ll err">${e.message}</div>`;
+    }
+  });
+  $('stopBtn').addEventListener('click', async () => {
+    $('stopBtn').disabled = true;
+    try { await api('/api/stop', 'POST'); await refresh(); } catch { $('stopBtn').disabled = false; }
+  });
+  
+  const refreshBtn = $('refreshBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      try {
+        await refresh();
+      } catch (e) {
+        console.error('Refresh error:', e);
+        $('logBody').innerHTML = `<div class="ll err">Refresh error: ${e.message}</div>`;
+      }
+    });
+  }
+
+  $('logToggle').addEventListener('click', () => {
+    logOpen = !logOpen;
+    $('logBody').classList.toggle('show', logOpen);
+    $('logArrow').classList.toggle('open', logOpen);
+    if (logOpen) $('logBody').scrollTop = $('logBody').scrollHeight;
+  });
+
+  console.log('[Dashboard] Initialization complete. Refresh button ready.');
+  refresh();
+  setInterval(refresh, 1000);
+</script>
+</body>
+</html>
