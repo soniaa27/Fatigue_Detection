@@ -1,22 +1,22 @@
-# 🧠 Personalized Fatigue Detection System
+# Personalized Fatigue Detection System
 
-A real-time fatigue prediction system that learns your personal alertness baseline and detects cognitive decline **before micro-sleep occurs** — using just a webcam.
-
----
-
-## 🚀 Key Features
-
-- 👁️ Eye tracking using EAR (Eye Aspect Ratio)
-- 😮 Yawn detection using MAR (Mouth Aspect Ratio)
-- 🧍 Head pose tracking (pitch, yaw, roll)
-- 🧠 Personalized baseline calibration
-- ⚡ GRU-based temporal fatigue prediction
-- 📊 Real-time monitoring dashboard (Streamlit)
-- 🚨 Early fatigue alerts (before micro-sleep)
+A real-time fatigue prediction system that learns your personal alertness baseline and detects cognitive decline **before micro-sleep occurs**, using just a webcam.
 
 ---
 
-## 🧠 How It Works
+## Key Features
+
+- Eye tracking using EAR (Eye Aspect Ratio)
+- Yawn detection using MAR (Mouth Aspect Ratio)
+- Head pose tracking (pitch, yaw, roll)
+- Personalized baseline calibration
+- **GRU-based temporal fatigue prediction**
+- Real-time monitoring dashboard (Streamlit)
+- Early fatigue alerts (before micro-sleep)
+
+---
+
+## How It Works
 
 1. **Capture** → Webcam extracts facial landmarks (MediaPipe)
 2. **Feature Extraction** → EAR, MAR, PERCLOS, head pose
@@ -26,7 +26,7 @@ A real-time fatigue prediction system that learns your personal alertness baseli
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - Python
 - OpenCV
